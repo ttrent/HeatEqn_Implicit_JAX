@@ -7,5 +7,6 @@ dependencies:
   - scipy
   - matplotlib
   - pip
+  - ruff
   - pip:
       - "jax[cuda13]"

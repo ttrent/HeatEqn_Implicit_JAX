@@ -1,0 +1,24 @@
+# Enforces .github/instructions/jax-style.instructions.md
+line-length = 88
+target-version = "py312"
+
+[lint]
+select = [
+    "E", "F", "W",  # pycodestyle + pyflakes (baseline)
+    "I",            # isort  -> import order/grouping (§1)
+    "N",            # pep8-naming -> snake_case/PascalCase (§1)
+    "D",            # pydocstyle -> docstrings (§3)
+    "UP",           # pyupgrade -> modern 3.12 syntax (§2)
+    "B",            # bugbear  -> mutable-default args, etc. (§2)
+]
+ignore = ["D100", "D104"]  # don't require module/package docstrings
+
+[lint.pydocstyle]
+convention = "numpy"        # §3 NumPy-style docstrings
+
+[lint.isort]
+known-first-party = ["rhs", "integrators", "solvers", "io"]
+section-order = ["future", "standard-library", "third-party", "jax", "first-party", "local-folder"]
+
+[lint.isort.sections]
+jax = ["jax", "jaxlib"]     # §1: JAX imports in their own group

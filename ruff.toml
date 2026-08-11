@@ -17,7 +17,7 @@ ignore = ["D100", "D104"]  # don't require module/package docstrings
 convention = "numpy"        # §3 NumPy-style docstrings
 
 [lint.isort]
-known-first-party = ["rhs", "integrators", "solvers", "io"]
+known-first-party = ["rhs", "integrators", "solvers", "io_utils"]
 section-order = ["future", "standard-library", "third-party", "jax", "first-party", "local-folder"]
 
 [lint.isort.sections]

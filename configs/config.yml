@@ -12,7 +12,7 @@ time:
     value: 10
 
 methods:
-  integrator: backward_euler
+  integrator: implicit_midpoint
   solver: newton_method
 
 solver:

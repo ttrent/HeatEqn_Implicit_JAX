@@ -1,7 +1,8 @@
 """Load simulation parameters from a YAML config into a ``SimParams`` tree."""
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Self
 
 import yaml
 
@@ -18,28 +19,60 @@ class GridParams:
         Left spatial boundary.
     xn : float
         Right spatial boundary.
+    dx : float
+        Grid spacing, computed as ``(xn - x0) / size`` (periodic grid).
     """
 
     size: int
     x0: float
     xn: float
+    dx: float = field(init=False)
+
+    def __post_init__(self) -> None:
+        """Compute the derived grid spacing."""
+        object.__setattr__(self, "dx", (self.xn - self.x0) / self.size)
 
 
 @dataclass(frozen=True)
 class SaveRate:
-    """Cadence at which the solution is recorded.
+    """Output cadence expressed in both steps and time.
 
     Attributes
     ----------
-    unit : str
-        Cadence unit, either ``"steps"`` or ``"time"``.
-    value : int | float
-        Interval between saves: an ``int`` step count when ``unit`` is
-        ``"steps"``, or a ``float`` time interval when ``unit`` is ``"time"``.
+    steps : int
+        Number of time steps between saves.
+    time : float
+        Time interval between saves.
     """
 
-    unit: str
-    value: int | float
+    steps: int
+    time: float
+
+    @classmethod
+    def from_unit_value(cls, unit: str, value: int | float, dt: float) -> Self:
+        """Build a cadence from one unit/value pair and the time step.
+
+        Parameters
+        ----------
+        unit : str
+            Cadence unit of ``value``, either ``"steps"`` or ``"time"``.
+        value : int | float
+            Save interval expressed in ``unit``.
+        dt : float
+            Time step used to convert between steps and time.
+
+        Returns
+        -------
+        SaveRate
+            Cadence populated with both ``steps`` and ``time``.
+        """
+        if unit == "steps":
+            steps = int(value)
+            return cls(steps=steps, time=steps * dt)
+        if unit == "time":
+            time = float(value)
+            return cls(steps=round(time / dt), time=time)
+        raise ValueError(f"unknown save_rate unit: {unit!r}")
 
 
 @dataclass(frozen=True)
@@ -56,12 +89,20 @@ class TimeParams:
         Time step ``dt``.
     save_rate : SaveRate
         How often the solution is recorded.
+    n_steps : int
+        Number of time steps, computed as ``round((end - start) / step_size)``.
     """
 
     start: float
     end: float
     step_size: float
     save_rate: SaveRate
+    n_steps: int = field(init=False)
+
+    def __post_init__(self) -> None:
+        """Compute the derived number of time steps."""
+        n_steps = round((self.end - self.start) / self.step_size)
+        object.__setattr__(self, "n_steps", n_steps)
 
 
 @dataclass(frozen=True)
@@ -169,11 +210,17 @@ def load_config(path: str | Path) -> SimParams:
     config = yaml.safe_load(Path(path).read_text(encoding="utf-8"))
 
     time_config = config["time"]
+    save_rate_config = time_config["save_rate"]
+    save_rate = SaveRate.from_unit_value(
+        save_rate_config["unit"],
+        save_rate_config["value"],
+        time_config["step_size"],
+    )
     time = TimeParams(
         start=time_config["start"],
         end=time_config["end"],
         step_size=time_config["step_size"],
-        save_rate=SaveRate(**time_config["save_rate"]),
+        save_rate=save_rate,
     )
 
     initial_config = config["initial_state"]

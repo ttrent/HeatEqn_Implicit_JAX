@@ -1,20 +1,17 @@
 """Run the implicit heat-equation simulation end to end from a YAML config."""
 
 import sys
-from functools import partial
 from time import perf_counter
 
 import numpy as np
 
 import jax
 import jax.numpy as jnp
-from jax import lax
 
 from initialize import sine_waves
-from integrators import INTEGRATORS
+from integrators import INTEGRATORS, make_buffer_runner
 from io_utils import append_snapshots, create_output_file, load_config, parse_args
-from solvers import SOLVERS, SolverDiagnostics
-from state import State
+from solvers import SOLVERS
 
 jax.config.update("jax_enable_x64", True)
 
@@ -40,35 +37,12 @@ def main() -> None:
 
     residual_fn = INTEGRATORS[params.methods.integrator]
     solver = SOLVERS[params.methods.solver]
+    run_buffer = make_buffer_runner(residual_fn, solver, params)
 
-    dt = params.time.step_size
     save_steps = params.time.save_rate.steps
     n_saves = params.time.n_steps // save_steps
     buffer_rows = params.output.buffer_rows
     n_buffers, remainder = divmod(n_saves, buffer_rows)
-
-    def step(state: State, _: None) -> tuple[State, SolverDiagnostics]:
-        u_new, diagnostics = solver(residual_fn, state, params)
-        return State(u=u_new, t=state.t + dt), diagnostics
-
-    def save_interval(
-        state: State, _: None
-    ) -> tuple[State, tuple[State, SolverDiagnostics, jax.Array]]:
-        state, diagnostics = lax.scan(step, state, xs=None, length=save_steps)
-        last = SolverDiagnostics(
-            iterations=diagnostics.iterations[-1],
-            converged=diagnostics.converged[-1],
-            residual_norm=diagnostics.residual_norm[-1],
-        )
-        interval_converged = jnp.all(diagnostics.converged)
-        return state, (state, last, interval_converged)
-
-    @partial(jax.jit, static_argnames="length")
-    def run_buffer(
-        state: State, length: int
-    ) -> tuple[State, tuple[State, SolverDiagnostics, jax.Array]]:
-        return lax.scan(save_interval, state, xs=None, length=length)
-
     buffer_lengths = [buffer_rows] * n_buffers
     if remainder:
         buffer_lengths.append(remainder)

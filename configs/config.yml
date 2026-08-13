@@ -15,6 +15,17 @@ methods:
   integrator: backward_euler
   solver: newton_method
 
+solver:
+  absolute_tolerance: 1.0e-8
+  relative_tolerance: 1.0e-6
+  max_iterations: 10
+  linear_rtol_init: 1.0e-3
+  linear_rtol_min: 1.0e-9
+  linear_rtol_max: 1.0e-2
+  linear_atol: 1.0e-12
+  gmres_restart: 20
+  gmres_maxiter: null
+
 initial_state:
   offset: 0.0
   modes:

@@ -8,6 +8,7 @@ from io_utils.input_config import (
     SaveRate,
     SimParams,
     SineMode,
+    SolverParams,
     TimeParams,
     load_config,
 )
@@ -20,6 +21,7 @@ __all__ = [
     "SaveRate",
     "SimParams",
     "SineMode",
+    "SolverParams",
     "TimeParams",
     "load_config",
 ]

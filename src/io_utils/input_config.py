@@ -122,6 +122,53 @@ class MethodParams:
 
 
 @dataclass(frozen=True)
+class SolverParams:
+    """Controls for the Jacobian-free Newton–Krylov implicit solve.
+
+    Attributes
+    ----------
+    absolute_tolerance : float
+        Absolute floor on the RMS residual norm. The outer Newton iteration is
+        converged when ``rms_norm(R) <= absolute_tolerance + relative_tolerance
+        * rms_norm(R0)``; this term dominates when the predictor is already
+        accurate.
+    relative_tolerance : float
+        Fraction of the initial residual norm ``rms_norm(R0)`` required for
+        convergence; dominates the stopping test when the initial residual is
+        large.
+    max_iterations : int
+        Hard cap on outer Newton iterations (bounds the ``lax.while_loop``).
+    linear_rtol_init : float
+        Relative tolerance for the first inner GMRES solve (the initial
+        Eisenstat–Walker forcing term).
+    linear_rtol_min : float
+        Lower clamp on the forcing term; the inner solve is never asked for
+        tighter relative accuracy than this. Reused for the tangent solve.
+    linear_rtol_max : float
+        Upper clamp on the forcing term; keeps the inner solve from becoming so
+        loose that a Newton step stalls.
+    linear_atol : float
+        Absolute floor for the inner GMRES solve, guarding against demanding
+        sub-machine accuracy when the right-hand side is tiny.
+    gmres_restart : int
+        Krylov subspace size before GMRES restarts.
+    gmres_maxiter : int | None
+        Maximum number of GMRES restart cycles; ``None`` uses the library
+        default.
+    """
+
+    absolute_tolerance: float
+    relative_tolerance: float
+    max_iterations: int
+    linear_rtol_init: float
+    linear_rtol_min: float
+    linear_rtol_max: float
+    linear_atol: float
+    gmres_restart: int
+    gmres_maxiter: int | None
+
+
+@dataclass(frozen=True)
 class SineMode:
     """A single sine-wave component of the initial state.
 
@@ -181,6 +228,8 @@ class SimParams:
         Time integration window and output cadence.
     methods : MethodParams
         Integrator and solver selection.
+    solver : SolverParams
+        Newton–Krylov implicit-solve controls.
     initial_state : InitialState
         Initial condition specification.
     output : OutputParams
@@ -190,6 +239,7 @@ class SimParams:
     grid: GridParams
     time: TimeParams
     methods: MethodParams
+    solver: SolverParams
     initial_state: InitialState
     output: OutputParams
 
@@ -231,6 +281,7 @@ def load_config(path: str | Path) -> SimParams:
         grid=GridParams(**config["grid"]),
         time=time,
         methods=MethodParams(**config["methods"]),
+        solver=SolverParams(**config["solver"]),
         initial_state=initial_state,
         output=OutputParams(**config["output"]),
     )

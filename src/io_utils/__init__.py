@@ -1,5 +1,6 @@
 """I/O utilities: configuration loading and result output."""
 
+from io_utils.cli import parse_args
 from io_utils.input_config import (
     GridParams,
     InitialState,
@@ -12,7 +13,7 @@ from io_utils.input_config import (
     TimeParams,
     load_config,
 )
-from io_utils.output import append_snapshot, create_output_file
+from io_utils.output import append_snapshots, create_output_file
 
 __all__ = [
     "GridParams",
@@ -24,7 +25,8 @@ __all__ = [
     "SineMode",
     "SolverParams",
     "TimeParams",
-    "append_snapshot",
+    "append_snapshots",
     "create_output_file",
     "load_config",
+    "parse_args",
 ]

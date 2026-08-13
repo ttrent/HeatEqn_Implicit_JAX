@@ -68,8 +68,9 @@ def create_output_file(params: SimParams, config_path: str | Path) -> Path:
 
     Stores the raw config YAML, a UTC creation timestamp, and git revision
     info as root attributes, saves the spatial grid, and creates the growable,
-    time-indexed datasets that :func:`append_snapshot` extends one row per
-    save. Call once, right after the config is loaded.
+    time-indexed datasets that :func:`append_snapshot` and
+    :func:`append_snapshots` extend as the run progresses. Call once, right
+    after the config is loaded.
 
     Parameters
     ----------
@@ -162,8 +163,12 @@ def create_output_file(params: SimParams, config_path: str | Path) -> Path:
     return out_path
 
 
-def _append_row(group: h5py.Group, name: str, value: ArrayLike) -> None:
-    """Extend a resizable dataset by one row and write ``value`` at the end.
+def _append_rows(group: h5py.Group, name: str, values: ArrayLike) -> None:
+    """Extend a resizable dataset along its leading axis and write ``values``.
+
+    Accepts either a single row or a block of rows. A single row (``values``
+    with one axis fewer than the dataset) is promoted to a block of one;
+    otherwise the row count is taken from the leading axis of ``values``.
 
     Parameters
     ----------
@@ -171,56 +176,68 @@ def _append_row(group: h5py.Group, name: str, value: ArrayLike) -> None:
         Group (or file) holding the dataset.
     name : str
         Name of the dataset, resizable along its leading axis.
-    value : ArrayLike
-        Row payload written at the new last index.
+    values : ArrayLike
+        One row, or a block of rows stacked along the leading axis, written at
+        the end of the dataset.
     """
     dataset = cast(h5py.Dataset, group[name])
+    block = np.asarray(values)
+    if block.ndim == dataset.ndim - 1:
+        block = block[np.newaxis]
+    n_rows = block.shape[0]
     index = dataset.shape[0]
-    dataset.resize(index + 1, axis=0)
-    dataset[index] = value
+    dataset.resize(index + n_rows, axis=0)
+    dataset[index : index + n_rows] = block
 
 
-def append_snapshot(
+def append_snapshots(
     path: str | Path,
-    state: State,
-    step: int,
+    states: State,
+    steps: ArrayLike,
     diagnostics: "SolverDiagnostics | None" = None,
 ) -> None:
-    """Append one time slice, extending every time-indexed dataset by a row.
+    """Append one or more time slices, sizing each dataset from the data.
 
-    Moves the field to host memory and writes the field, time, step index, and
-    solver diagnostics as a new aligned row. Reopens the file in append mode
-    each call, so the two output functions stay decoupled and every save is
-    flushed to disk. Call outside any ``jit`` / ``lax.scan`` region, since it
-    reads concrete (host) values.
+    Moves the fields to host memory and writes the fields, times, step indices,
+    and solver diagnostics as one aligned block. ``states`` may hold a single
+    snapshot (``states.u`` shape ``(nx,)``) or a batch (``(n_rows, nx)``);
+    :func:`_append_rows` extends every dataset to match. Reopens the file in
+    append mode once, so a full write buffer is flushed together. Call outside
+    any ``jit`` / ``lax.scan`` region, since it reads concrete (host) values.
 
     Parameters
     ----------
     path : str | Path
         Path to the HDF5 file created by :func:`create_output_file`.
-    state : State
-        Snapshot to record; ``state.u`` has shape ``(nx,)``, dtype float64,
-        and ``state.t`` is the scalar time.
-    step : int
-        Global time-step index of this snapshot.
+    states : State
+        One snapshot or a stack of them; ``states.u`` has shape ``(nx,)`` or
+        ``(n_rows, nx)`` and ``states.t`` the matching scalar or ``(n_rows,)``.
+    steps : ArrayLike
+        Global time-step index of each snapshot, scalar or shape ``(n_rows,)``.
     diagnostics : SolverDiagnostics | None, optional
-        Solver telemetry for the step that produced ``state``. ``None`` (e.g.
-        the initial condition, which involved no solve) writes a sentinel row
-        of ``iterations=0``, ``converged=True``, ``residual_norm=NaN``.
+        Per-snapshot solver telemetry, each leaf scalar or shape ``(n_rows,)``.
+        ``None`` (e.g. the initial condition, which involved no solve) writes a
+        sentinel of ``iterations=0``, ``converged=True``, ``residual_norm=NaN``
+        for every row.
     """
-    u = np.asarray(state.u, dtype=np.float64)
+    u = np.asarray(states.u, dtype=np.float64)
+    t = np.asarray(states.t, dtype=np.float64)
+    step_index = np.asarray(steps, dtype=np.int64)
     if diagnostics is None:
-        iterations, converged, residual_norm = 0, True, float("nan")
+        n_rows = u.shape[0] if u.ndim == 2 else 1
+        iterations = np.zeros(n_rows, dtype=np.int64)
+        converged = np.ones(n_rows, dtype=np.bool_)
+        residual_norm = np.full(n_rows, np.nan, dtype=np.float64)
     else:
-        iterations = int(diagnostics.iterations)
-        converged = bool(diagnostics.converged)
-        residual_norm = float(diagnostics.residual_norm)
+        iterations = np.asarray(diagnostics.iterations, dtype=np.int64)
+        converged = np.asarray(diagnostics.converged, dtype=np.bool_)
+        residual_norm = np.asarray(diagnostics.residual_norm, dtype=np.float64)
 
     with h5py.File(path, "a") as f:
-        _append_row(f, "u", u)
-        _append_row(f, "t", float(state.t))
-        _append_row(f, "step", int(step))
+        _append_rows(f, "u", u)
+        _append_rows(f, "t", t)
+        _append_rows(f, "step", step_index)
         diagnostics_group = cast(h5py.Group, f["diagnostics"])
-        _append_row(diagnostics_group, "iterations", iterations)
-        _append_row(diagnostics_group, "converged", converged)
-        _append_row(diagnostics_group, "residual_norm", residual_norm)
+        _append_rows(diagnostics_group, "iterations", iterations)
+        _append_rows(diagnostics_group, "converged", converged)
+        _append_rows(diagnostics_group, "residual_norm", residual_norm)

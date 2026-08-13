@@ -37,3 +37,4 @@ initial_state:
 output:
   directory: output
   filename: heat_solution.h5
+  buffer_rows: 100

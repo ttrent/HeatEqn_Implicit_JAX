@@ -210,10 +210,14 @@ class OutputParams:
         Output directory path.
     filename : str
         Output file name.
+    buffer_rows : int
+        Number of saved snapshots held in memory before they are flushed to the
+        HDF5 file as one block.
     """
 
     directory: str
     filename: str
+    buffer_rows: int = 100
 
 
 @dataclass(frozen=True)

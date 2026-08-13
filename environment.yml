@@ -9,6 +9,6 @@ dependencies:
   - pyyaml
   - pip
   - ruff
-  - hdf5
+  - h5py
   - pip:
       - "jax[cuda13]"

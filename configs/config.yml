@@ -25,4 +25,4 @@ initial_state:
 
 output:
   directory: output
-  filename: heat_solution.npz
+  filename: heat_solution.h5

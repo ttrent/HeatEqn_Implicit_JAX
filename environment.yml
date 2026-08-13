@@ -10,5 +10,6 @@ dependencies:
   - pip
   - ruff
   - h5py
+  - ripgrep
   - pip:
       - "jax[cuda13]"

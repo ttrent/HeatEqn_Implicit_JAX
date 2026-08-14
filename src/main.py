@@ -10,7 +10,13 @@ import jax.numpy as jnp
 
 from initialize import sine_waves
 from integrators import INTEGRATORS, make_buffer_runner
-from io_utils import append_snapshots, create_output_file, load_config, parse_args
+from io_utils import (
+    append_snapshots,
+    create_output_file,
+    load_config,
+    parse_args,
+    write_run_stats,
+)
 from solvers import SOLVERS
 
 jax.config.update("jax_enable_x64", True)
@@ -25,8 +31,11 @@ def main() -> None:
     jitted ``run_buffer`` call collects up to ``output.buffer_rows`` snapshots
     before they are streamed to the HDF5 file, so the whole history never has to
     reside in memory. A trailing partial buffer is run as a final shorter scan.
-    Prints the compile and run timings and warns if any step failed to converge.
+    Prints the compile and run timings and warns if any step failed to converge,
+    then writes those timings and this process's OS resource usage
+    (``/usr/bin/time -v`` style) to the output file.
     """
+    program_start = perf_counter()
     args = parse_args()
 
     params = load_config(args.config)
@@ -74,6 +83,14 @@ def main() -> None:
             f"WARNING: {failed} save interval(s) contained a non-converged step.",
             file=sys.stderr,
         )
+
+    elapsed_time = perf_counter() - program_start
+    write_run_stats(
+        out_path,
+        elapsed_time=elapsed_time,
+        compile_time=compile_time,
+        run_time=run_time,
+    )
 
 
 if __name__ == "__main__":

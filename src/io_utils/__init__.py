@@ -13,7 +13,7 @@ from io_utils.input_config import (
     TimeParams,
     load_config,
 )
-from io_utils.output import append_snapshots, create_output_file
+from io_utils.output import append_snapshots, create_output_file, write_run_stats
 
 __all__ = [
     "GridParams",
@@ -29,4 +29,5 @@ __all__ = [
     "create_output_file",
     "load_config",
     "parse_args",
+    "write_run_stats",
 ]

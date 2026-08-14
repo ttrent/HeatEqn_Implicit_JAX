@@ -1,5 +1,6 @@
 """Write simulation results and run metadata to a single HDF5 file."""
 
+import resource
 import subprocess
 from datetime import UTC, datetime
 from pathlib import Path
@@ -241,3 +242,158 @@ def append_snapshots(
         _append_rows(diagnostics_group, "iterations", iterations)
         _append_rows(diagnostics_group, "converged", converged)
         _append_rows(diagnostics_group, "residual_norm", residual_norm)
+
+
+def _format_clock(seconds: float) -> str:
+    """Format a duration like GNU ``time``: ``m:ss.ss`` or ``h:mm:ss``.
+
+    Parameters
+    ----------
+    seconds : float
+        Duration in seconds.
+
+    Returns
+    -------
+    str
+        ``"m:ss.ss"`` for durations under an hour, otherwise ``"h:mm:ss"``.
+    """
+    total_minutes, secs = divmod(seconds, 60.0)
+    hours, minutes = divmod(int(total_minutes), 60)
+    if hours:
+        return f"{hours}:{minutes:02d}:{int(secs):02d}"
+    return f"{minutes}:{secs:05.2f}"
+
+
+def _resource_usage() -> dict[str, int | float]:
+    """Collect this process's OS resource usage via ``getrusage``.
+
+    Reads ``resource.RUSAGE_SELF``, the same source ``/usr/bin/time -v`` draws
+    from, so the values mirror that tool's report for the running process.
+    Counters the Linux kernel does not track (swaps, socket messages, ...) are
+    returned as ``0`` by ``getrusage`` itself.
+
+    Returns
+    -------
+    dict[str, int | float]
+        User/system CPU seconds, peak resident set size (KiB), page-fault,
+        context-switch, block-I/O, swap, and signal counters, and the system
+        page size in bytes.
+
+    Notes
+    -----
+    ``ru_maxrss`` is in kibibytes on Linux (this project's target), so it is
+    reported as ``max_rss_kb``.
+    """
+    usage = resource.getrusage(resource.RUSAGE_SELF)
+    return {
+        "user_time_s": usage.ru_utime,
+        "system_time_s": usage.ru_stime,
+        "max_rss_kb": usage.ru_maxrss,
+        "minor_page_faults": usage.ru_minflt,
+        "major_page_faults": usage.ru_majflt,
+        "voluntary_ctx_switches": usage.ru_nvcsw,
+        "involuntary_ctx_switches": usage.ru_nivcsw,
+        "fs_inputs": usage.ru_inblock,
+        "fs_outputs": usage.ru_oublock,
+        "swaps": usage.ru_nswap,
+        "signals": usage.ru_nsignals,
+        "page_size_bytes": resource.getpagesize(),
+    }
+
+
+def _format_time_v(
+    usage: dict[str, int | float],
+    elapsed_time: float,
+    compile_time: float,
+    run_time: float,
+) -> str:
+    """Render resource usage as a ``/usr/bin/time -v``-style text report.
+
+    Parameters
+    ----------
+    usage : dict[str, int | float]
+        Resource counters from :func:`_resource_usage`.
+    elapsed_time : float
+        Total wall-clock time of the run, in seconds.
+    compile_time : float
+        Wall-clock time spent warming the XLA cache, in seconds.
+    run_time : float
+        Wall-clock time spent in the timed integration loop, in seconds.
+
+    Returns
+    -------
+    str
+        Multi-line summary mirroring ``/usr/bin/time -v``, prefixed with the
+        separate compile and run wall-clock timings.
+    """
+    cpu_time = usage["user_time_s"] + usage["system_time_s"]
+    percent_cpu = round(100 * cpu_time / elapsed_time) if elapsed_time > 0 else 0
+    lines = [
+        f"Compile wall-clock time (seconds): {compile_time:.3f}",
+        f"Run wall-clock time (seconds): {run_time:.3f}",
+        f"User time (seconds): {usage['user_time_s']:.2f}",
+        f"System time (seconds): {usage['system_time_s']:.2f}",
+        f"Percent of CPU this job got: {percent_cpu}%",
+        f"Elapsed (wall clock) time (h:mm:ss or m:ss): {_format_clock(elapsed_time)}",
+        f"Maximum resident set size (kbytes): {usage['max_rss_kb']}",
+        f"Major (requiring I/O) page faults: {usage['major_page_faults']}",
+        f"Minor (reclaiming a frame) page faults: {usage['minor_page_faults']}",
+        f"Voluntary context switches: {usage['voluntary_ctx_switches']}",
+        f"Involuntary context switches: {usage['involuntary_ctx_switches']}",
+        f"Swaps: {usage['swaps']}",
+        f"File system inputs: {usage['fs_inputs']}",
+        f"File system outputs: {usage['fs_outputs']}",
+        f"Signals delivered: {usage['signals']}",
+        f"Page size (bytes): {usage['page_size_bytes']}",
+    ]
+    return "\n".join(lines)
+
+
+def write_run_stats(
+    path: str | Path,
+    *,
+    elapsed_time: float,
+    compile_time: float,
+    run_time: float,
+) -> None:
+    """Write wall-clock timings and OS resource usage to the output file.
+
+    Records how the run went as a ``run_stats`` group: structured scalar
+    attributes for later analysis plus a ``summary`` text attribute mirroring
+    ``/usr/bin/time -v`` for quick reading. Resource counters come from
+    :func:`_resource_usage` (``getrusage(RUSAGE_SELF)``); reading them here, at
+    the end of the run, captures the true peak resident set size. Call once, as
+    the final step, outside any ``jit`` region.
+
+    Parameters
+    ----------
+    path : str | Path
+        Path to the HDF5 file created by :func:`create_output_file`.
+    elapsed_time : float
+        Wall-clock time of the run, in seconds.
+    compile_time : float
+        Wall-clock time spent warming the XLA cache, in seconds.
+    run_time : float
+        Wall-clock time spent in the timed integration loop, in seconds.
+
+    Notes
+    -----
+    ``max_rss_kb`` is in kibibytes (Linux ``getrusage`` convention). Counters the
+    Linux kernel does not track are stored as ``0``.
+    """
+    usage = _resource_usage()
+    cpu_time = usage["user_time_s"] + usage["system_time_s"]
+    summary = _format_time_v(usage, elapsed_time, compile_time, run_time)
+
+    with h5py.File(path, "a") as f:
+        stats = f.create_group("run_stats")
+        stats.attrs["elapsed_s"] = elapsed_time
+        stats.attrs["compile_s"] = compile_time
+        stats.attrs["run_s"] = run_time
+        stats.attrs["percent_cpu"] = (
+            round(100 * cpu_time / elapsed_time) if elapsed_time > 0 else 0
+        )
+        stats.attrs["finished_utc"] = datetime.now(UTC).isoformat()
+        for name, value in usage.items():
+            stats.attrs[name] = value
+        stats.attrs["summary"] = summary

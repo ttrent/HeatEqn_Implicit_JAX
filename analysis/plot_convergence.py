@@ -335,7 +335,7 @@ def plot_temporal(
     )
 
     fig, ax = plt.subplots(figsize=(8.0, 6.0))
-    ax.loglog(dt, err_continuous, "o-", color="C3", label="vs continuous (plateaus)")
+    ax.loglog(dt, err_continuous, "o-", color="C3", label="vs continuous")
     ax.loglog(dt, err_semidiscrete, "s-", color="C0", label="vs semi-discrete")
     ax.loglog(dt, err_self, "^-", color="C2", label="vs self-convergence")
 

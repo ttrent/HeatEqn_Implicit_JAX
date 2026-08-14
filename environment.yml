@@ -11,5 +11,6 @@ dependencies:
   - ruff
   - h5py
   - ripgrep
+  - ffmpeg
   - pip:
       - "jax[cuda13]"

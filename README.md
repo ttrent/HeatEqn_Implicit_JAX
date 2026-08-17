@@ -9,7 +9,7 @@ streams self-describing results to HDF5.
 
 The code solves the periodic 1-D heat equation
 
-$$\frac{\partial u}{\partial t} = \alpha\, \frac{\partial^2 u}{\partial x^2}, \qquad \alpha = 1,$$
+$$\frac{\partial u}{\partial t} = \alpha \frac{\partial^2 u}{\partial x^2}, \qquad \alpha = 1,$$
 
 on a uniform periodic grid. Space is discretised with a second-order central-difference
 Laplacian ([src/rhs/laplacian.py](src/rhs/laplacian.py)); time is advanced *implicitly*,
